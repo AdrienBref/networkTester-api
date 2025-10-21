@@ -3,11 +3,11 @@ package com.sunt.NetworkTester.Service;
 import com.sunt.NetworkTester.DTO.*;
 import com.sunt.NetworkTester.Entity.DeviceEntity;
 import com.sunt.NetworkTester.Entity.DeviceRuntimeStatus;
+import com.sunt.NetworkTester.Exception.DeviceNotFoundException;
 import com.sunt.NetworkTester.Repository.DeviceRepository;
 
 import com.sunt.NetworkTester.Repository.DeviceRuntimeStatusRepository;
 import com.sunt.NetworkTester.mapper.DeviceMapper;
-import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -63,6 +63,28 @@ public class DeviceStatusService {
         e = deviceRepository.save(e);
         return mapper.toResponse(e);
         
+        
+    }
+    
+    public DeviceResponseDTO deleteDevice(String id) {
+        
+        UUID uuid;
+        
+        
+        try {
+            uuid = UUID.fromString(id);
+            
+        }catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("ID no valido " + id);
+        }
+        
+        if(!deviceRepository.existsById(uuid)) {
+            //throw new DeviceNotFoundException("Dispositivo no encontrado con ID: " + id);;
+        }
+
+        DeviceResponseDTO dto = mapper.toResponse(deviceRepository.getById(uuid));
+        deviceRepository.deleteById(uuid);
+        return dto;
         
     }
 

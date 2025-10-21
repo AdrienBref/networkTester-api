@@ -35,5 +35,10 @@ public class DeviceController {
         return false;
     }
     
+    @DeleteMapping("/deleteDevice/{id}")
+    public ResponseEntity<DeviceResponseDTO> deleteDevice(@PathVariable String id) {
+        return ResponseEntity.ok(service.deleteDevice(id));
+    }
+    
 
 }
