@@ -1,13 +1,12 @@
 package com.sunt.NetworkTester.Service;
 
-import com.sunt.NetworkTester.DTO.DeviceRealtimeDTO;
-import com.sunt.NetworkTester.DTO.DeviceStatusDTO;
-import com.sunt.NetworkTester.DTO.ResDeviceConnTest;
+import com.sunt.NetworkTester.DTO.*;
 import com.sunt.NetworkTester.Entity.DeviceEntity;
 import com.sunt.NetworkTester.Entity.DeviceRuntimeStatus;
 import com.sunt.NetworkTester.Repository.DeviceRepository;
 
 import com.sunt.NetworkTester.Repository.DeviceRuntimeStatusRepository;
+import com.sunt.NetworkTester.mapper.DeviceMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -21,11 +20,11 @@ import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 public class DeviceStatusService {
 
     private final DeviceRepository deviceRepository;
     private final DeviceRuntimeStatusRepository runtimeRepo;
+    private final DeviceMapper mapper;
 
     private final SimpMessagingTemplate ws;
 
@@ -50,6 +49,22 @@ public class DeviceStatusService {
         boolean alarmSent;
     }
     private final ConcurrentHashMap<UUID, OfflineInfo> offlineInfo = new ConcurrentHashMap<>();
+
+    public DeviceStatusService(DeviceRepository deviceRepository, DeviceRuntimeStatusRepository runtimeRepo, DeviceMapper mapper, SimpMessagingTemplate ws) {
+        this.deviceRepository = deviceRepository;
+        this.runtimeRepo = runtimeRepo;
+        this.ws = ws;
+        this.mapper = mapper;
+    }
+    
+    public DeviceResponseDTO createDevice(DeviceCreateDTO dto) {
+        DeviceEntity e = mapper.toEntity(dto);
+        System.out.println(e.toString());
+        e = deviceRepository.save(e);
+        return mapper.toResponse(e);
+        
+        
+    }
 
     /** Devuelve estados en lote; si ids==null → todos */
     public List<DeviceStatusDTO> getStatuses(List<UUID> ids) {
