@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.time.Instant;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
@@ -49,6 +49,8 @@ public class DeviceStatusService {
         boolean alarmSent;
     }
     private final ConcurrentHashMap<UUID, OfflineInfo> offlineInfo = new ConcurrentHashMap<>();
+    
+    int comprobacionSegundos = 0;
 
     public DeviceStatusService(DeviceRepository deviceRepository, DeviceRuntimeStatusRepository runtimeRepo, DeviceMapper mapper, SimpMessagingTemplate ws) {
         this.deviceRepository = deviceRepository;
@@ -170,25 +172,83 @@ public class DeviceStatusService {
 
                 // logs de color (opcional)
                 if (isOnline) {
-                    //System.out.println("\u001B[32m[PING OK] " + d.getName() + " (" + d.getIp() + ")\u001B[0m");
+                    System.out.println("\u001B[32m[PING OK] " + d.getName() + " (" + d.getIp() + ")\u001B[0m");
                 } else {
-                    //System.out.println("\u001B[31m[PING FAIL] " + d.getName() + " (" + d.getIp() + ")\u001B[0m");
+                    System.out.println("\u001B[31m[PING FAIL] " + d.getName() + " (" + d.getIp() + ")\u001B[0m");
                 }
             });
         }
     }
 
 
-    /** Lógica simple para decidir si hay que pingear ahora */
+    /** Lógica para decidir si hay que pingear ahora */
     private boolean debePingear(DeviceEntity d, long nowMillis) {
-        // Si está marcado “testAlways”, ignoramos schedule
-        if (!d.isTestAlways()) {
-            // muy simple: solo ejemplo. Aquí puedes evaluar d.getSchedule() (Antes de N1/N2…)
-            // Si no cumple ventana, devolver false
-        }
+        // 1) Respeta siempre la frecuencia (freno mínimo)
         long interval = Math.max(500L, d.getPingInterval()); // seguridad mínimo 500ms
         long last = lastPingMillis.getOrDefault(d.getId(), 0L);
-        return (nowMillis - last) >= interval;
+        if ((nowMillis - last) < interval) {
+            //System.out.println(comprobacionSegundos + 1 + " segundos pasados");
+            return false;
+        }
+
+        // 2) Si está en modo testAlways → ignora día/horario, pero mantiene la frecuencia
+        if (d.isTestAlways()) return true;
+
+        // 3) Evalúa día de la semana y horario (zona de Madrid)
+        ZonedDateTime now = ZonedDateTime.now(ZoneId.of("Europe/Madrid"));
+        DayOfWeek today = now.getDayOfWeek();
+        LocalTime time = now.toLocalTime();
+
+        if (!isAllowedDay(d, today)){
+            //System.out.println("Hoy es miercoles no toca pingear");
+            return false;  
+        } 
+        if (!isWithinSchedule(d, time)){
+
+            return false;
+        }
+        //System.out.println("Hoy es miercoles toca pingear");
+        return true;
+    }
+
+    private boolean isAllowedDay(DeviceEntity d, DayOfWeek today) {
+        Set<DayOfWeek> days = d.getNotifyDays();
+        if (days == null || days.isEmpty()) {
+            // Sin restricción → se permite cualquier día
+            return true;
+        }
+        return days.contains(today);
+    }
+
+    /** Devuelve true si la hora actual está dentro del horario permitido.
+     *  Soporta ventana normal (start <= end) y ventana que cruza medianoche (start > end).
+     *  Si no hay horario configurado, asume "24/7".
+     */
+    private boolean isWithinSchedule(DeviceEntity d, LocalTime now) {
+        // Ajusta los getters si usas otros nombres o estructuras
+        LocalTime start = d.getStartTime();
+        LocalTime end   = d.getEndTime();
+
+        if (start == null || end == null) {
+            // sin horario → 24/7
+            return true;
+        }
+        return isWithinWindow(now, start, end);
+    }
+
+    /** Comprueba una ventana horaria, incluyendo las que cruzan medianoche. */
+    private boolean isWithinWindow(LocalTime now, LocalTime start, LocalTime end) {
+        if (start.equals(end)) {
+            // misma hora = interpretamos como 24h (si quisieras "cerrado", cámbialo a false)
+            return true;
+        }
+        if (start.isBefore(end)) {
+            // ventana normal: [start, end]
+            return !now.isBefore(start) && !now.isAfter(end);
+        } else {
+            // ventana cruza medianoche, p.ej. 22:00–06:00 → [start, 24:00) U [00:00, end]
+            return !now.isBefore(start) || !now.isAfter(end);
+        }
     }
 
     /** Resultado de ping */
