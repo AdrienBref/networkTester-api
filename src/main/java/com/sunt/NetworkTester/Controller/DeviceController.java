@@ -2,6 +2,7 @@ package com.sunt.NetworkTester.Controller;
 
 import com.sunt.NetworkTester.DTO.DeviceCreateDTO;
 import com.sunt.NetworkTester.DTO.DeviceResponseDTO;
+import com.sunt.NetworkTester.DTO.DeviceUpdateDTO;
 import com.sunt.NetworkTester.Entity.DeviceEntity;
 import com.sunt.NetworkTester.Service.DeviceStatusService;
 import jakarta.validation.Valid;
@@ -30,9 +31,8 @@ public class DeviceController {
     }
     
     @PutMapping("/{id}")
-    public boolean updateDevice(@PathVariable String id, @RequestBody DeviceEntity device) {
-        System.out.println(device.toString());
-        return false;
+    public ResponseEntity<DeviceResponseDTO> updateDevice(@PathVariable String id, @RequestBody DeviceUpdateDTO dto) {
+        return ResponseEntity.ok(service.updateDevice(id, dto));
     }
     
     @DeleteMapping("/deleteDevice/{id}")

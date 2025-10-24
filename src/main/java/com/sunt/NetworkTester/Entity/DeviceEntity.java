@@ -10,6 +10,8 @@ import java.time.DayOfWeek;
 import java.util.*;
 
 @Data
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor

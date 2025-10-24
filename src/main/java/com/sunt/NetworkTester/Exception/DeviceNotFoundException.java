@@ -1,6 +1,10 @@
 package com.sunt.NetworkTester.Exception;
 
-public class DeviceNotFoundException extends Throwable {
-    public DeviceNotFoundException(String s) {
+public class DeviceNotFoundException extends RuntimeException {
+    public DeviceNotFoundException(String message) {
+        super(message);
+    }
+    public DeviceNotFoundException(String message, Throwable cause) {
+        super(message, cause);
     }
 }

@@ -7,17 +7,29 @@ import com.sunt.NetworkTester.Exception.DeviceNotFoundException;
 import com.sunt.NetworkTester.Repository.DeviceRepository;
 
 import com.sunt.NetworkTester.Repository.DeviceRuntimeStatusRepository;
+import com.sunt.NetworkTester.Service.Email.EmailSender;
 import com.sunt.NetworkTester.mapper.DeviceMapper;
+import jakarta.annotation.PreDestroy;
+import jakarta.mail.*;
+import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeMessage;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
+
+//TODO: Optimizar procesos /**
+//      Quitar la carpeta de windows defender (se come el 50% de los recursos por le ping)
+//      Probar ping por tcp puerto 443 (averiguar si todos los dispositivos tienen abierta esta opcion)
+// 
+// TODO: MANEJO DE EXCEPCIONES POR DIOS!!
 
 @Service
 public class DeviceStatusService {
@@ -30,9 +42,12 @@ public class DeviceStatusService {
 
     private final Map<UUID, DeviceStatusDTO> prev = new ConcurrentHashMap<>();
     // cache de últimos estados
+
     private final ConcurrentHashMap<UUID, DeviceStatusDTO> cache = new ConcurrentHashMap<>();
     // control de “cuando fue el último ping” para cada device
     private final ConcurrentHashMap<UUID, Long> lastPingMillis = new ConcurrentHashMap<>();
+    
+    private final EmailSender emailSender;
 
     // Devuelve todos los dispositivos
     public List<DeviceEntity> findAll() {
@@ -40,25 +55,49 @@ public class DeviceStatusService {
     }
     
     // pool para pings concurrentes (ajusta a tu gusto)
+
+    int cores = Runtime.getRuntime().availableProcessors();
+    int core = Math.max(8, cores);      // base (8–16 suele ir bien)
+    int max  = Math.max(16, cores * 2); // puede crecer si hay picos/offline
+    long keepAlive = 30;                // hilos extra mueren tras 30 s ociosos
+
+    BlockingQueue<Runnable> q = new LinkedBlockingQueue<>(2000); // cola grande pero acotada
     
-    private final ExecutorService pool = Executors.newFixedThreadPool(
-            Math.max(2, Runtime.getRuntime().availableProcessors() / 2));
+    ThreadPoolExecutor pool = new ThreadPoolExecutor(
+            core, max,
+            keepAlive, TimeUnit.SECONDS,
+            q,
+            new ThreadPoolExecutor.CallerRunsPolicy() // backpressure: si se satura, el scheduler ejecuta la tarea y se “frena”
+    );
 
     private static class OfflineInfo {
         long since;
         boolean alarmSent;
     }
     private final ConcurrentHashMap<UUID, OfflineInfo> offlineInfo = new ConcurrentHashMap<>();
+
+    private final ConcurrentHashMap<UUID, Semaphore> deviceLocks = new ConcurrentHashMap<>();
+
+    private boolean tryEnter(UUID id) {
+        return deviceLocks.computeIfAbsent(id, k -> new Semaphore(1)).tryAcquire();
+    }
+    private void exit(UUID id) {
+        var sem = deviceLocks.get(id);
+        if (sem != null) sem.release();
+    }
     
     int comprobacionSegundos = 0;
 
-    public DeviceStatusService(DeviceRepository deviceRepository, DeviceRuntimeStatusRepository runtimeRepo, DeviceMapper mapper, SimpMessagingTemplate ws) {
+    public DeviceStatusService(DeviceRepository deviceRepository, DeviceRuntimeStatusRepository runtimeRepo, DeviceMapper mapper, SimpMessagingTemplate ws, EmailSender emailSender) {
         this.deviceRepository = deviceRepository;
         this.runtimeRepo = runtimeRepo;
         this.ws = ws;
         this.mapper = mapper;
+        this.emailSender = emailSender;
     }
     
+    //   ****|| CRUD ||****
+    //Create
     public DeviceResponseDTO createDevice(DeviceCreateDTO dto) {
         DeviceEntity e = mapper.toEntity(dto);
         System.out.println(e.toString());
@@ -67,12 +106,10 @@ public class DeviceStatusService {
         
         
     }
-    
+    //Delete
     public DeviceResponseDTO deleteDevice(String id) {
         
         UUID uuid;
-        
-        
         try {
             uuid = UUID.fromString(id);
             
@@ -89,6 +126,42 @@ public class DeviceStatusService {
         return dto;
         
     }
+
+    public DeviceResponseDTO updateDevice(String id, DeviceUpdateDTO dto) {
+        UUID uuid;
+        try {
+            uuid = UUID.fromString(id);
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("ID no válido: " + id);
+        }
+
+        DeviceEntity entity = deviceRepository.findById(uuid)
+                .orElseThrow(() -> new DeviceNotFoundException("Dispositivo no encontrado con ID: " + id));
+
+        // Actualizaciones (null-safe si quieres permitir parches parciales)
+        if (dto.getName() != null) entity.setName(dto.getName());
+        if (dto.getIp() != null) entity.setIp(dto.getIp());
+        if (dto.getPingInterval() != null) entity.setPingInterval(dto.getPingInterval());
+        if (dto.getTestAlways() != null) entity.setTestAlways(dto.getTestAlways());
+        if (dto.getMinOfflineAlarm() != null) entity.setMinOfflineAlarm(dto.getMinOfflineAlarm());
+        if (dto.getStartTime() != null) entity.setStartTime(dto.getStartTime());
+        if (dto.getEndTime() != null) entity.setEndTime(dto.getEndTime());
+
+        // Aquí está la conversión de List -> Set
+        if (dto.getNotificationDays() != null) {
+            entity.setNotifyDays(new LinkedHashSet<>(dto.getNotificationDays()));
+            // Si no te importa el orden, puedes usar: new HashSet<>(...)
+        }
+
+        // Si aún no vas a gestionar las rules desde el update, no las toques:
+        // entity.setRules(null);  // ← evita borrar reglas por accidente
+
+        DeviceEntity saved = deviceRepository.save(entity);
+        return mapper.toResponse(saved);
+    }
+
+    
+    // ||               ||
 
     /** Devuelve estados en lote; si ids==null → todos */
     public List<DeviceStatusDTO> getStatuses(List<UUID> ids) {
@@ -127,56 +200,77 @@ public class DeviceStatusService {
         long now = System.currentTimeMillis();
 
         for (DeviceEntity d : devices) {
+
+            // Inicializa si no existe aún (jitter aleatorio)
+            lastPingMillis.putIfAbsent(
+                    d.getId(),
+                    System.currentTimeMillis() - ThreadLocalRandom.current().nextLong(d.getPingInterval())
+            );
+            
             if (!debePingear(d, now)) continue;
-            lastPingMillis.put(d.getId(), now);
 
-            pool.submit(() -> {
-                PingResult r = ping(d.getIp(), d.getPingInterval());
-                boolean isOnline = r.online();
 
-                // cache en memoria (para el front)
-                cache.put(d.getId(), new DeviceStatusDTO(d.getId(), isOnline, r.latencyMs(), Instant.now()));
+            if (!pool.isShutdown()) {
+                pool.submit(() -> {
 
-                var dto = new DeviceStatusDTO(d.getId(), isOnline, r.latencyMs(), Instant.now());
-                cache.put(d.getId(), dto);
-                publishDelta(dto);
+                    if (!tryEnter(d.getId())) return; // ya hay uno con ese device
+                    try {
+                        lastPingMillis.put(d.getId(), now);
+                        PingResult r = ping(d.getIp(), d.getPingInterval());
+                        boolean isOnline = r.online();
 
-                // estado persistente
-                DeviceRuntimeStatus st = getOrCreateStatus(d.getId());
+                        // cache en memoria (para el front)
+                        cache.put(d.getId(), new DeviceStatusDTO(d.getId(), isOnline, r.latencyMs(), Instant.now()));
 
-                if (isOnline) {
-                    st.setLastState(true);
-                    st.setOfflineSince(null);
-                    st.setAlarmSent(false);
-                    runtimeRepo.save(st);
-                    returnStatusConnection(new DeviceStatusDTO(d.getId(), true, r.latencyMs(), Instant.now()));
-                } else {
-                    Instant nowTs = Instant.now();
-                    if (st.getOfflineSince() == null) { // nueva caída
-                        st.setOfflineSince(nowTs);
-                        st.setAlarmSent(false);
+                        var dto = new DeviceStatusDTO(d.getId(), isOnline, r.latencyMs(), Instant.now());
+                        cache.put(d.getId(), dto);
+                        publishDelta(dto);
+
+                        // estado persistente
+                        DeviceRuntimeStatus st = getOrCreateStatus(d.getId());
+
+                        if (isOnline) {
+                            st.setLastState(true);
+                            st.setOfflineSince(null);
+                            st.setAlarmSent(false);
+                            runtimeRepo.save(st);
+                            returnStatusConnection(new DeviceStatusDTO(d.getId(), true, r.latencyMs(), Instant.now()));
+                        } else {
+                            Instant nowTs = Instant.now();
+                            if (st.getOfflineSince() == null) { // nueva caída
+                                st.setOfflineSince(nowTs);
+                                st.setAlarmSent(false);
+                            }
+                            st.setLastState(false);
+
+                            long minutosOffline = java.time.Duration.between(st.getOfflineSince(), nowTs).toMinutes();
+                            if (Boolean.FALSE.equals(st.getAlarmSent()) && minutosOffline >= d.getMinOfflineAlarm()) {
+                                // ENVÍA una sola vez por caída (persistido)
+                                System.out.println("\u001B[33m⚠️  [ALERTA] " + d.getName() + " (" + d.getIp() +
+                                        ") ha superado " + d.getMinOfflineAlarm() + " min offline\u001B[0m");
+                                //sendAlarmEmail(d);
+                                onOfflineThreshold(d);
+                                st.setAlarmSent(true);
+                                st.setLastAlarmAt(nowTs);
+                            }
+                            runtimeRepo.save(st);
+                        }
+
+                        // logs de color (opcional)
+                        if (isOnline) {
+                            System.out.println("\u001B[32m[PING OK] " + d.getName() + " (" + d.getIp() + ")\u001B[0m");
+                        } else {
+                            System.out.println("\u001B[31m[PING FAIL] " + d.getName() + " (" + d.getIp() + ")\u001B[0m");
+                        }
+                    } finally {
+                        exit(d.getId());
                     }
-                    st.setLastState(false);
+                    
+                    
+                });            
+            }
 
-                    long minutosOffline = java.time.Duration.between(st.getOfflineSince(), nowTs).toMinutes();
-                    if (Boolean.FALSE.equals(st.getAlarmSent()) && minutosOffline >= d.getMinOfflineAlarm()) {
-                        // ENVÍA una sola vez por caída (persistido)
-                        System.out.println("\u001B[33m⚠️  [ALERTA] " + d.getName() + " (" + d.getIp() +
-                                ") ha superado " + d.getMinOfflineAlarm() + " min offline\u001B[0m");
-                        sendAlarmEmail(d);
-                        st.setAlarmSent(true);
-                        st.setLastAlarmAt(nowTs);
-                    }
-                    runtimeRepo.save(st);
-                }
-
-                // logs de color (opcional)
-                if (isOnline) {
-                    System.out.println("\u001B[32m[PING OK] " + d.getName() + " (" + d.getIp() + ")\u001B[0m");
-                } else {
-                    System.out.println("\u001B[31m[PING FAIL] " + d.getName() + " (" + d.getIp() + ")\u001B[0m");
-                }
-            });
+            
         }
     }
 
@@ -305,9 +399,60 @@ public class DeviceStatusService {
     }
     
     private void sendAlarmEmail(DeviceEntity d) {
-        System.out.println("\u001B[33m⚠️  [ALERTA] El dispositivo " + d.getName() +
-                " (" + d.getIp() + ") ha superado el tiempo de alarma (" + d.getMinOfflineAlarm() + " min)\u001B[0m");
+        System.out.println("\u001B[33m⚠️  [Enviando Email...] \u001B[0m");
+        String username = "developadri@gmail.com";      // tu dirección de Gmail
+        String appPassword = "gcyx vgvf ruws fgnt"; // ponla en variable de entorno
 
+        Properties props = new Properties();
+        props.put("mail.smtp.auth", "true");
+        props.put("mail.smtp.starttls.enable", "true"); // para 587
+        props.put("mail.smtp.host", "smtp.gmail.com");
+        props.put("mail.smtp.port", "587");
+        // Si prefieres 465 (SSL puro), usa:
+        // props.put("mail.smtp.ssl.enable", "true");
+        // props.put("mail.smtp.port", "465");
+
+        Session session = Session.getInstance(props, new Authenticator() {
+            @Override protected PasswordAuthentication getPasswordAuthentication() {
+                return new PasswordAuthentication(username, appPassword);
+            }
+        });
+
+        Message msg = new MimeMessage(session);
+        try {
+            msg.setFrom(new InternetAddress(username, "Argos NetworkTester"));
+        } catch (MessagingException e) {
+            throw new RuntimeException(e);
+        } catch (UnsupportedEncodingException e) {
+            throw new RuntimeException(e);
+        }
+        try {
+            msg.setRecipients(Message.RecipientType.TO, InternetAddress.parse("developadri@gmail.com"));
+        } catch (MessagingException e) {
+            throw new RuntimeException(e);
+        }
+        try {
+            msg.setSubject("⚠️  [ALERTA] El dispositivo: " + d.getName() + " con ip: " + d.getIp() + " lleva desconectado " + d.getMinOfflineAlarm() + " minutos.");
+        } catch (MessagingException e) {
+            throw new RuntimeException(e);
+        }
+        try {
+            msg.setText("⚠️  [ALERTA] El dispositivo: " + d.getName() + " con ip: " + d.getIp() + " lleva desconectado " + d.getMinOfflineAlarm() + " minutos.");
+        } catch (MessagingException e) {
+            throw new RuntimeException(e);
+        }
+
+        try {
+            Transport.send(msg);
+        } catch (MessagingException e) {
+            throw new RuntimeException(e);
+        }
+        System.out.println("Enviado ✅");
+
+    }
+
+    private void onOfflineThreshold(DeviceEntity d) {
+        emailSender.sendDeviceOfflineAlert(d);
     }
     
     private ResDeviceConnTest returnStatusConnection (DeviceStatusDTO deviceStatusDTO){
@@ -318,6 +463,28 @@ public class DeviceStatusService {
                 
         );
         return rCT;
+    }
+
+    /**
+     * Este método se ejecuta automáticamente cuando el contenedor de Spring
+     * (por ejemplo, al parar IntelliJ o hacer Stop en el Run) destruye el bean.
+     */
+    @PreDestroy
+    private void onShutdown() {
+        System.out.println("[SHUTDOWN] Cerrando thread pool de pings...");
+        pool.shutdown(); // deja terminar las tareas activas
+
+        try {
+            if (!pool.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                System.out.println("[SHUTDOWN] Forzando cierre inmediato del pool...");
+                pool.shutdownNow(); // corta tareas pendientes
+            }
+        } catch (InterruptedException e) {
+            pool.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+
+        System.out.println("[SHUTDOWN] Pool cerrado correctamente.");
     }
 
 }
