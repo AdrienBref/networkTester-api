@@ -17,6 +17,8 @@ import java.io.UnsupportedEncodingException;
 import java.util.*;
 import java.util.stream.Collectors;
 
+
+//TODO: Hay que programar reintentos de envio
 @Service
 public class SmtpEmailSender implements EmailSender {
 
@@ -38,10 +40,10 @@ public class SmtpEmailSender implements EmailSender {
     @Value("${spring.mail.properties.mail.smtp.starttls.enable}")
     private boolean starttls;
     
-    private final EmailRepository emailRepository;
 
-    public SmtpEmailSender(EmailRepository emailRepository) {
-        this.emailRepository = emailRepository;
+
+    public SmtpEmailSender() {
+        
     }
 
     @Override
@@ -95,62 +97,6 @@ public class SmtpEmailSender implements EmailSender {
             throw new RuntimeException(e);
         }
         System.out.println("Enviado ✅");
-    }
-    
-    public List<EmailResponseDTO> findAll() {
-        
-        List<EmailEntity> eList = emailRepository.findAll();
-        List<EmailResponseDTO> rDtoList = new ArrayList<>();
-        
-        for(EmailEntity e : eList) {
-            rDtoList.add(EmailMapper.toResponse(e));
-        }
-        
-        return rDtoList;
-    }
-
-    @Transactional
-    public List<EmailResponseDTO> saveList(List<EmailCreateDTO> dtoList) {
-        // 1) Normaliza y deduplica la entrada
-        Set<String> incoming = (dtoList == null ? List.<EmailCreateDTO>of() : dtoList).stream()
-                .map(EmailCreateDTO::getEmail)
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .map(String::toLowerCase)      // opcional pero recomendable
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-
-        // 2) Carga existentes (normalizados)
-        Set<String> existing = emailRepository.findAllEmails().stream()
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .map(String::toLowerCase)
-                .collect(Collectors.toSet());
-
-        // 3) Calcula diffs
-        Set<String> toInsert = new HashSet<>(incoming);
-        toInsert.removeAll(existing);
-
-        Set<String> toDelete = new HashSet<>(existing);
-        toDelete.removeAll(incoming);
-
-        // 4) Aplica cambios
-        if (!toDelete.isEmpty()) {
-            emailRepository.deleteAllByEmailIn(toDelete);
-        }
-
-        if (!toInsert.isEmpty()) {
-            List<EmailEntity> newEntities = toInsert.stream()
-                    .map(e -> EmailEntity.builder().email(e).build())
-                    .toList();
-            emailRepository.saveAll(newEntities);
-        }
-
-        // 5) Devuelve estado final como ResponseDTO
-        return emailRepository.findAll().stream()
-                .map(e -> new EmailResponseDTO(e.getId().toString(), e.getEmail()))
-                .toList();
     }
 }
 
