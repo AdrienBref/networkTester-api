@@ -63,3 +63,6 @@ application-dev.yml
 *.tar
 *.gz
 
+application-local.properties
+application.properties
+.env

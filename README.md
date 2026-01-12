@@ -67,6 +67,16 @@ The frontend is intentionally simple and framework-free to keep the focus on bac
 
 ---
 
+## Configuration
+
+To run the application locally, create an `application.properties` file in
+`src/main/resources/` based on the provided example:
+
+```bash
+cp application.example.properties application.properties
+
+---
+
 ## 🖥️ Demo UI (optional)
 
 The project includes a lightweight web interface used for demonstration purposes.
