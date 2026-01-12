@@ -1,7 +1,7 @@
-# NetworkTester
+# ARGOS NetworkTester
 
-NetworkTester is a backend application designed to monitor network devices, track their connectivity status, and manage alerting rules.  
-It has been developed as a **portfolio project**, with a strong focus on backend architecture, clarity of design, and real-world use cases.
+ARGOS NetworkTester is a backend-focused monitoring application designed to track network device availability, connectivity status, and alerting rules in real time.  
+It has been developed as a **portfolio project**, with a strong emphasis on clean backend architecture, clarity of design, and real-world system thinking.
 
 ---
 
@@ -14,9 +14,9 @@ The goal of this project is to demonstrate:
 - REST API design
 - Business logic encapsulation in service layers
 - Integration with a lightweight frontend for visualization
-- Real-time updates using WebSockets
+- Real-time updates using **WebSockets**
 
-This is **not a production-ready system**, but a realistic technical demo intended to showcase backend skills.
+This is **not a production-ready system**, but a realistic technical demo intended to showcase backend and system-oriented skills.
 
 ---
 
@@ -27,7 +27,7 @@ This is **not a production-ready system**, but a realistic technical demo intend
 - Store and update device runtime status
 - Configure alert email settings
 - Notify frontend clients of status changes via WebSocket
-- RESTful API for full CRUD operations
+- RESTful API supporting full CRUD operations
 
 ---
 
@@ -60,38 +60,17 @@ The project follows a classic layered architecture:
 The backend can optionally serve a lightweight frontend (HTML / CSS / JavaScript) for demo purposes.
 
 - The frontend consumes the REST API
-- Uses WebSocket (STOMP / SockJS) for real-time device updates
+- Uses **WebSocket (STOMP / SockJS)** for real-time device updates
 - Displays device status, latency, and configuration options
 
 The frontend is intentionally simple and framework-free to keep the focus on backend logic.
 
 ---
 
-## Configuration
+## ⚙️ Configuration
 
-To run the application locally, create an `application.properties` file in
+To run the application locally, create an `application.properties` file in  
 `src/main/resources/` based on the provided example:
 
 ```bash
 cp application.example.properties application.properties
-
----
-
-## 🖥️ Demo UI (optional)
-
-The project includes a lightweight web interface used for demonstration purposes.
-
-### Dashboard
-![NetworkTester Dashboard](docs/landingPage.png)
-
-### Add / Configure Device
-![Add Device Modal](docs/AddDevice.png)
-
----
-
-## 🚀 How to Run
-
-### Requirements
-- Java 17+
-- Maven
-
