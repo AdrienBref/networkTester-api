@@ -67,12 +67,21 @@ The frontend is intentionally simple and framework-free to keep the focus on bac
 
 ---
 
+## 🖥️ Demo UI (optional)
+
+The project includes a lightweight web interface used for demonstration purposes.
+
+### Dashboard
+![NetworkTester Dashboard](docs/landingPage.png)
+
+### Add / Configure Device
+![Add Device Modal](docs/AddDevice.png)
+
+---
+
 ## 🚀 How to Run
 
 ### Requirements
 - Java 17+
 - Maven
 
-### Run locally
-```bash
-mvn spring-boot:run
