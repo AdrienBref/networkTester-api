@@ -35,3 +35,5 @@ pom.xml
 mvnw
 mvnw.cmd
 
+*.mv.db
+*.trace.db
