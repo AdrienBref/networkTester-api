@@ -44,3 +44,11 @@ INSERT INTO device_notify_day (device_id, day_of_week)
 SELECT id, 'THURSDAY' FROM device_entity;
 INSERT INTO device_notify_day (device_id, day_of_week)
 SELECT id, 'FRIDAY' FROM device_entity;
+
+INSERT INTO email_entity (id, email) VALUES
+('8fbd8b1d-0f85-4d8f-9201-7d9c80e648ae', 'soporte@homiyummy.com'),
+('76b8d4e3-70d1-46cd-9df8-f92b7b15f1a0', 'alertas@homiyummy.com'),
+('d23aa083-4f5a-4c33-bd55-bda43a9ef3d2', 'developadri@gmail.com'),
+('a640de1f-2dfb-46a5-986d-9aef8c5da47e', 'backups@homiyummy.com'),
+('20a68842-b727-4ac8-9fdc-95d4b7d6b0a7', 'admin@homiyummy.com');
+
