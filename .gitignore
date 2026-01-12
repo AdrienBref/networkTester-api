@@ -8,32 +8,58 @@ target/
 .apt_generated
 .classpath
 .factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
+##################################
+# OS
+##################################
+.DS_Store
+Thumbs.db
 
-### IntelliJ IDEA ###
-.idea
+##################################
+# IntelliJ IDEA
+##################################
+.idea/
 *.iws
 *.iml
 *.ipr
+*.lck
 
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
+##################################
+# Maven / Java
+##################################
+target/
+*.log
+hs_err_pid*
 
-### VS Code ###
-.vscode/
-pom.xml
-mvnw
-mvnw.cmd
+##################################
+# Spring Boot
+##################################
+spring.log
 
+##################################
+# H2 / Local databases
+##################################
 *.mv.db
 *.trace.db
+data/
+
+##################################
+# Environment / secrets
+##################################
+.env
+application-local.yml
+application-dev.yml
+
+##################################
+# Temporary / backups
+##################################
+*.tmp
+*.bak
+*.swp
+
+##################################
+# Archives
+##################################
+*.zip
+*.tar
+*.gz
+
