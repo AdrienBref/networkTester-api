@@ -258,9 +258,9 @@ public class DeviceStatusService {
 
                         // logs de color (opcional)
                         if (isOnline) {
-                            System.out.println("\u001B[32m[PING OK] " + d.getName() + " (" + d.getIp() + ")\u001B[0m");
+                            //System.out.println("\u001B[32m[PING OK] " + d.getName() + " (" + d.getIp() + ")\u001B[0m");
                         } else {
-                            System.out.println("\u001B[31m[PING FAIL] " + d.getName() + " (" + d.getIp() + ")\u001B[0m");
+                            //System.out.println("\u001B[31m[PING FAIL] " + d.getName() + " (" + d.getIp() + ")\u001B[0m");
                         }
                     } finally {
                         exit(d.getId());
