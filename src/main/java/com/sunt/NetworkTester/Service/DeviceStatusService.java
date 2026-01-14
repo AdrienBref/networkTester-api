@@ -398,58 +398,6 @@ public class DeviceStatusService {
         }
     }
     
-    private void sendAlarmEmail(DeviceEntity d) {
-        System.out.println("\u001B[33m⚠️  [Enviando Email...] \u001B[0m");
-        String username = "developadri@gmail.com";      // tu dirección de Gmail
-        String appPassword = "gcyx vgvf ruws fgnt"; // ponla en variable de entorno
-
-        Properties props = new Properties();
-        props.put("mail.smtp.auth", "true");
-        props.put("mail.smtp.starttls.enable", "true"); // para 587
-        props.put("mail.smtp.host", "smtp.gmail.com");
-        props.put("mail.smtp.port", "587");
-        // Si prefieres 465 (SSL puro), usa:
-        // props.put("mail.smtp.ssl.enable", "true");
-        // props.put("mail.smtp.port", "465");
-
-        Session session = Session.getInstance(props, new Authenticator() {
-            @Override protected PasswordAuthentication getPasswordAuthentication() {
-                return new PasswordAuthentication(username, appPassword);
-            }
-        });
-
-        Message msg = new MimeMessage(session);
-        try {
-            msg.setFrom(new InternetAddress(username, "Argos NetworkTester"));
-        } catch (MessagingException e) {
-            throw new RuntimeException(e);
-        } catch (UnsupportedEncodingException e) {
-            throw new RuntimeException(e);
-        }
-        try {
-            msg.setRecipients(Message.RecipientType.TO, InternetAddress.parse("developadri@gmail.com"));
-        } catch (MessagingException e) {
-            throw new RuntimeException(e);
-        }
-        try {
-            msg.setSubject("⚠️  [ALERTA] El dispositivo: " + d.getName() + " con ip: " + d.getIp() + " lleva desconectado " + d.getMinOfflineAlarm() + " minutos.");
-        } catch (MessagingException e) {
-            throw new RuntimeException(e);
-        }
-        try {
-            msg.setText("⚠️  [ALERTA] El dispositivo: " + d.getName() + " con ip: " + d.getIp() + " lleva desconectado " + d.getMinOfflineAlarm() + " minutos.");
-        } catch (MessagingException e) {
-            throw new RuntimeException(e);
-        }
-
-        try {
-            Transport.send(msg);
-        } catch (MessagingException e) {
-            throw new RuntimeException(e);
-        }
-        System.out.println("Enviado ✅");
-
-    }
 
     private void onOfflineThreshold(DeviceEntity d) {
         emailSender.sendDeviceOfflineAlert(d);
