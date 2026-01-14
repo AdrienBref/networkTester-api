@@ -10,6 +10,7 @@ import jakarta.mail.*;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +21,7 @@ import java.util.stream.Collectors;
 
 //TODO: Hay que programar reintentos de envio
 @Service
+@ConditionalOnProperty(name = "app.email.enabled", havingValue = "true", matchIfMissing = true)
 public class SmtpEmailSender implements EmailSender {
 
     @Value("${spring.mail.username}")
