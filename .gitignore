@@ -64,5 +64,5 @@ application-dev.yml
 *.gz
 
 application-local.properties
-application.properties
+!**/main/resources/application.properties
 .env
