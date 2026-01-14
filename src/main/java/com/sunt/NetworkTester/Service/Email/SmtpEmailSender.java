@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
 
 //TODO: Hay que programar reintentos de envio
 @Service
-@ConditionalOnProperty(name = "app.email.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "app.email.enabled", havingValue = "true", matchIfMissing = false)
 public class SmtpEmailSender implements EmailSender {
 
     @Value("${spring.mail.username}")
