@@ -11,7 +11,7 @@ public class NetworkTesterApplication {
 	
 	public static void main(String[] args) {
 		SpringApplication.run(NetworkTesterApplication.class, args);
-		System.out.println("Hola mundo!");	
+
 	}
 
 }
